@@ -26,6 +26,7 @@ import ChevronLeftIcon from "@material-ui/icons/ChevronLeft";
 import NotificationsIcon from "@material-ui/icons/Notifications";
 // import { mainListItems, secondaryListItems } from "./listItems";
 import { Table, TableBody, TableCell, TableContainer, TablePagination, TableHead, TableRow } from '@material-ui/core';
+import { Dialog, DialogTitle, DialogContent, DialogActions } from '@material-ui/core';
 import Col from 'react-bootstrap/Col';
 import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
@@ -186,10 +187,59 @@ export default function SocietyList() {
     setCurrentItem(item);
   };
 
-  // 
+  //
   useEffect(() => {
     tenderData();
   },[])
+
+  // Society-side view of admin-uploaded folder documents
+  const [docModalOpen, setDocModalOpen] = useState(false);
+  const [folderDocs, setFolderDocs] = useState([]);
+  const [folderTitle, setFolderTitle] = useState('');
+  const [folderLoading, setFolderLoading] = useState(false);
+
+  const openFolderDocs = async (tender) => {
+    setFolderTitle(tender.title || '');
+    setDocModalOpen(true);
+    setFolderLoading(true);
+    setFolderDocs([]);
+
+    const combined = [];
+    if (Array.isArray(tender.docs) && tender.docs.length > 0) {
+      tender.docs.forEach((d) => combined.push({ name: (d.name || '').replace(/\+/g, ' '), url: d.url }));
+    }
+
+    try {
+      const res = await axios.post(
+        `${baseurl}/api/get/document`,
+        { folderName: tender.title },
+        config
+      );
+      const files = (res.data && res.data.documents) || [];
+      files.forEach((f) => {
+        const displayName = (f.name || '').split('/').pop().replace(/\+/g, ' ');
+        if (displayName) combined.push({ name: displayName, url: f.url });
+      });
+    } catch (err) {
+      console.error('Failed to fetch folder documents', err);
+    }
+
+    const seen = new Set();
+    const deduped = combined.filter((d) => {
+      if (!d.url || seen.has(d.url)) return false;
+      seen.add(d.url);
+      return true;
+    });
+
+    setFolderDocs(deduped);
+    setFolderLoading(false);
+  };
+
+  const closeFolderDocs = () => {
+    setDocModalOpen(false);
+    setFolderDocs([]);
+    setFolderTitle('');
+  };
   // 
 
   // const [bid,setBid] = useState();
@@ -266,9 +316,18 @@ export default function SocietyList() {
                         <Button
                           variant="contained"
                           color="primary"
+                          style={{ marginRight: 6 }}
                           onClick={() => window.open(item.doc, "_blank")}
+                          disabled={!item.doc}
                         >
-                          View
+                          Primary Doc
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          onClick={() => openFolderDocs(item)}
+                        >
+                          View Documents
                         </Button>
                       </td>
                       <td>{item.ward}</td>
@@ -294,9 +353,33 @@ export default function SocietyList() {
           </Paper>
           <hr/>
               <Bidder/>
-     
+
         </Container>
       </main>
+
+      <Dialog open={docModalOpen} onClose={closeFolderDocs} fullWidth maxWidth="sm">
+        <DialogTitle>Documents — {folderTitle}</DialogTitle>
+        <DialogContent dividers>
+          {folderLoading && <Typography>Loading...</Typography>}
+          {!folderLoading && folderDocs.length === 0 && (
+            <Typography>No documents uploaded for this tender yet.</Typography>
+          )}
+          {!folderLoading && folderDocs.length > 0 && (
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {folderDocs.map((doc, i) => (
+                <li key={i} style={{ marginBottom: 8 }}>
+                  • <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>
+                    {doc.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeFolderDocs} color="primary">Close</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }
